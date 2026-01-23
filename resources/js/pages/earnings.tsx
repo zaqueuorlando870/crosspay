@@ -176,6 +176,7 @@ const getPayoutMethodDisplayName = (method: PaymentMethod) => {
 };
 
 const getPayoutMethodDetails = (method: PayoutMethod) => {
+    
     switch (method.type) {
         case 'paypal':
             return method.details.email;
@@ -986,7 +987,10 @@ export default function Earnings({
                                         <p className="text-muted-foreground mb-4">
                                             No payout methods added yet
                                         </p>
-                                        <Button 
+                                    </div>
+                                )}
+
+                                          <Button 
                                             onClick={() => {
                                                 setSelectedCountry(null);
                                                 setShowAddMethod(true);
@@ -997,8 +1001,6 @@ export default function Earnings({
                                             <Plus className="h-4 w-4" />
                                             Add Payout Method
                                         </Button>
-                                    </div>
-                                )}
 
                                 {showAddMethod && (
                                     <Card>
