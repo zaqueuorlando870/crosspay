@@ -10,16 +10,21 @@ use HPWebdeveloper\LaravelPayPocket\Facades\LaravelPayPocket;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
+use Laravel\Fortify\Fortify;
+ 
 
+// Public marketplace
 Route::get('/', function () {
     return Inertia::render('welcome', [
         'canRegister' => Features::enabled(Features::registration()),
     ]);
 })->name('home');
 
-// Public marketplace
+
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
+
 Route::get('/marketplace/{listing}', [MarketplaceController::class, 'show'])->name('marketplace.show');
+
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', function () {

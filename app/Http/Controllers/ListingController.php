@@ -25,6 +25,8 @@ class ListingController extends Controller
             'profit' => 'required|numeric|min:0',
         ]);
 
+        $validated['from_currency'] = auth()->user()->currency;
+        $validated['to_currency'] = $request->currency;
         $listing = $request->user()->listings()->create($validated);
         $user = auth()->user();
         $user->pay($validated['amount']);

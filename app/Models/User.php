@@ -92,4 +92,28 @@ class User extends Authenticatable implements WalletOperations
     {
         return $this->hasMany(Transaction::class);
     }
+
+    public function earnings()
+    {
+        return $this->hasMany(Earning::class);
+    }
+
+    public function availableEarnings()
+    {
+        return $this->earnings()->available();
+    }
+
+    public function totalEarnings($currency = null)
+    {
+        $query = $this->earnings()->available();
+        
+        if ($currency) {
+            $query->where('currency', $currency);
+        }
+        
+        return $query->sum('net_amount');
+    }
+
+
+
 }
