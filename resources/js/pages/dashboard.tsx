@@ -4,7 +4,7 @@ import { Head, router, usePage } from '@inertiajs/react';
 import type { SharedData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowDown, Wallet, BarChart2, Zap, ChevronUp, ChevronDown, ArrowRightLeft, Globe } from 'lucide-react';
+import { ArrowDown, ArrowRightLeft, BarChart2, Clock, CreditCard, DollarSign, FileText, Home, LineChart, ListChecks, Mail, Package2, PanelLeft, Search, Settings, ShoppingCart, Users, Wallet, Zap, ChevronUp, ChevronDown, Globe } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import Wallets from '@/components/Wallets';
@@ -42,9 +42,10 @@ type ExchangeRate = {
     change: number;
 };
 
-type DashboardProps = {
+interface DashboardProps {
     balance: number;
     availableBalance?: number;
+    activeListingsCount?: number;
     wallets?: Wallet[];
     recentTransactions?: Transaction[];
     exchangeRates?: ExchangeRate[];
@@ -69,10 +70,17 @@ type PageProps = InertiaPageProps & {
 };
 
 // Balance Cards Component
-function BalanceCards({ balance, available = 0, exchangeRates = [] }: { balance: number; available?: number; exchangeRates: ExchangeRate[] }) {
-    const totalTrades = 42;
-    const activeTrades = 7;
-    
+function BalanceCards({ 
+    balance, 
+    available = 0, 
+    activeListingsCount = 0,
+    exchangeRates = [] 
+}: { 
+    balance: number; 
+    available?: number; 
+    activeListingsCount?: number;
+    exchangeRates: ExchangeRate[] 
+}) {
     // Get user's preferred currency
     const { auth } = usePage<PageProps>().props;
     const userCurrency = auth.user.currency || 'USD';
@@ -92,45 +100,25 @@ function BalanceCards({ balance, available = 0, exchangeRates = [] }: { balance:
     }, balance);
 
     return (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Portfolio Value</CardTitle>
-                    <Wallet className="h-4 w-4 text-muted-foreground" />
+                    <CardTitle className="text-sm font-medium">Total Balance</CardTitle>
+                    <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{formatCurrency(totalValue)}</div>
-                    <p className="text-xs text-muted-foreground">Across all currencies in {userCurrency}</p>
+                    <div className="text-2xl font-bold">{formatCurrency(balance)}</div>
+                    <p className="text-xs text-muted-foreground">Total funds</p>
                 </CardContent>
             </Card>
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Available</CardTitle>
-                    <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold">{formatCurrency(available)}</div>
-                    <p className="text-xs text-muted-foreground">Ready to exchange in {userCurrency}</p>
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Trades</CardTitle>
-                    <BarChart2 className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold">{totalTrades}</div>
-                    <p className="text-xs text-muted-foreground">This month</p>
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Active Trades</CardTitle>
+                    <CardTitle className="text-sm font-medium">Active Listings</CardTitle>
                     <Zap className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{activeTrades}</div>
-                    <p className="text-xs text-muted-foreground">In progress</p>
+                    <div className="text-2xl font-bold">{activeListingsCount}</div>
+                    <p className="text-xs text-muted-foreground">In marketplace</p>
                 </CardContent>
             </Card>
         </div>
@@ -147,14 +135,6 @@ function QuickExchange() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    type PageProps = {
-        auth: SharedData['auth'] & {
-            user: SharedData['auth']['user'] & {
-                currency?: string;
-            };
-        };
-    }
-    
     const { auth } = usePage<PageProps>().props;
     const userCurrency = auth.user.currency || 'USD';
 
@@ -359,6 +339,7 @@ function ExchangeRates({ rates }: { rates: ExchangeRate[] }) {
 export default function Dashboard({ 
     balance = 0, // Provide a default value of 0
     availableBalance = 0, // Provide a default value of 0
+    activeListingsCount = 0,
     wallets,
     recentTransactions,
     exchangeRates = [], // Provide a default empty array
@@ -452,7 +433,8 @@ export default function Dashboard({
                 {/* Balance Cards */}
                 <BalanceCards 
                     balance={balance} 
-                    available={availableBalance} 
+                    available={availableBalance}
+                    activeListingsCount={activeListingsCount}
                     exchangeRates={exchangeRates.length > 0 ? exchangeRates : [
                         // Fallback rates if none provided
                         { from: 'USD', to: 'EUR', rate: 0.92, change: 0.5 },

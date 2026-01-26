@@ -1,259 +1,253 @@
-import { useState } from 'react';
-import { Head, Link, usePage, useForm, router } from '@inertiajs/react';
+import { useState, useEffect, useCallback } from 'react';
+import { Head, Link, usePage } from '@inertiajs/react';
+import { router } from '@inertiajs/react';
 import { login, register, logout } from '@/routes';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Button } from '@/components/ui/button';
-import { BsCurrencyExchange } from 'react-icons/bs';
-import { toast } from 'sonner';
-import { LogOut, User as UserIcon } from 'lucide-react';
-import {
-    Search,
-    TrendingUp,
-    User,
-    LogIn,
-    UserPlus,
-    MoreVertical,
-    BarChart3,
-    PieChart,
-    TrendingDown,
-    Shield,
-    Cloud,
-    Heart,
-    Truck,
-} from 'lucide-react';
 
-interface Currency {
+// Use the route function from ziggy-js if needed
+const route = window.route || ((name: string, params = {}) => {
+    // Simple route helper if ziggy is not available
+    if (name === 'login') {
+        return `/login?${new URLSearchParams(params as Record<string, string>).toString()}`;
+    }
+    return `/${name}`;
+});
+
+// Define the user type
+type User = {
+    id: number;
+    name: string;
+    email: string;
+    email_verified_at: string | null;
+};
+
+// Define the listing type
+type Listing = {
     id: number;
     code: string;
     name: string;
     baseRate: number;
     rate: number;
+    from_currency: string;
+    to_currency: string;
+    change24h: number;
+    high24h: number;
+    low24h: number;
     lastUpdated: string;
     flag: string;
+    amount: number;
+    total_amount: number;
     minAmount: number;
-    maxAmount: number;  // Maximum amount that can be exchanged in one transaction
-    fee: number;        // Transaction fee percentage
-    originalData?: any; // Original data from the server
-}
+    maxAmount: number;
+    fee: number;
+    originalData: any;
+};
 
-interface MarketplaceProps {
-    listings: Currency[];
-    currencyGroups: { name: string; icon: any }[];
-    tabs: string[];
-}
-
-const CURRENCY_GROUPS = [
-    { name: 'MAJORS', icon: BarChart3 },
-    { name: 'AFRICAN', icon: PieChart },
-];
-
-const TABS = ['All Currencies', 'Favorites', 'Gainers', 'Losers'];
-
-interface User {
-    name: string;
-    email: string;
-    currency?: string;
-}
-
+// Define the page props type
 interface PageProps {
     auth: {
-        user: User | null;
+        user?: User;
     };
-    user: User | null;
-    name: string;
-    email: string;
-    listings: Currency[];
-    currencyGroups: { name: string; icon: any }[];
-    tabs: string[];
+    user?: User;
+    listings: Listing[];
+    route?: string;
+};
+
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { LogOut, User as UserIcon } from 'lucide-react';
+import {
+    Search,
+} from 'lucide-react';
+
+// Single interface for currency/listing data
+interface Currency extends Omit<Listing, 'originalData'> {
+    // Extends the Listing type but excludes originalData
 }
 
-export default function Marketplace({ listings, currencyGroups, tabs, auth }: PageProps) {
+
+export default function Marketplace() {
+    const { auth, listings } = usePage<PageProps>().props;
+    const isAuthenticated = Boolean(auth?.user);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState(tabs[0]);
-    const [selectedGroups, setSelectedGroups] = useState<string[]>(['MAJORS']);
-    const [baseCurrency, setBaseCurrency] = useState(auth?.user?.currency || 'USD');
     const [selectedCurrency, setSelectedCurrency] = useState<Currency | null>(null);
     const [amount, setAmount] = useState('');
-    const [showExchangeModal, setShowExchangeModal] = useState(false);
-    const { post, processing } = useForm();  // Moved inside the component
-    const CURRENCY_GROUPS = currencyGroups;
-    const TABS = tabs;
+    const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
+    const [showBuyModal, setShowBuyModal] = useState(false);
 
+    // Get user's base currency from auth or default to USD
+    const [userBaseCurrency, setUserBaseCurrency] = useState(auth?.user?.currency || 'USD');
 
-    const formatRate = (rate: number) => {
+    // Show all available currencies
+    const filteredCurrencies = listings || [];
+
+    const formatRate = (rate: number, maxDecimals = 4): string => {
+        // Special case for maxAmount to show full number with 4 decimal places
+        if (maxDecimals === 4) {
+            return new Intl.NumberFormat(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 4,
+                useGrouping: true
+            }).format(rate);
+        }
+
+        // Default formatting for exchange rates
         return rate.toLocaleString(undefined, {
             minimumFractionDigits: 4,
             maximumFractionDigits: 4,
         });
     };
 
-    const formatChange = (change: number) => {
+    const formatChange = (change: number): string => {
         return change.toFixed(2);
     };
 
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleString();
+    const formatDate = (dateString: string): string => {
+        return new Date(dateString).toLocaleString();
     };
 
-    // Add these state variables
-    const [filters, setFilters] = useState({
-        minPrice: '',
-        maxPrice: '',
-        minMaxAmount: '',
-        currency: ''
-    });
-
-    const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setFilters(prev => ({ ...prev, [name]: value }));
-    };
-
-    const clearFilters = () => {
-        setFilters({
-            minPrice: '',
-            maxPrice: '',
-            minMaxAmount: '',
-            currency: ''
-        });
-    };
-
-    // Update the filteredListings calculation to handle price range filtering correctly
-    const filteredListings = listings.filter(currency => {
-        if (!currency || !currency.name || !currency.code) {
-            return false; // Skip invalid entries
+    const handleBuyClick = useCallback((currency: Currency) => {
+        if (!isAuthenticated) {
+            // Redirect to login with a return URL using Inertia's router
+            router.visit(route('login', { return: window.location.pathname }));
+            return;
         }
-
-        // Filter by search query with null checks and optional chaining
-        const searchLower = searchQuery?.toLowerCase() || '';
-        const matchesSearch = currency.name?.toLowerCase().includes(searchLower) ||
-            currency.code?.toLowerCase().includes(searchLower);
-
-        // Get the rate for the current currency in the selected base currency
-        let rate;
-        if (currency.code === baseCurrency) {
-            rate = 1; // If it's the base currency, rate is 1:1
-        } else {
-            // Find the base currency's rate
-            const baseCurrencyData = listings.find(c => c.code === baseCurrency);
-            if (!baseCurrencyData) return false; // Skip if base currency not found
-
-            // Get the direct rate if available, otherwise calculate it
-            if (currency.rate && currency.rate > 0) {
-                rate = 1 / currency.rate;
-            } else {
-                // Fallback calculation using base rates
-                const currencyInUSD = 1 / currency.baseRate;
-                const baseInUSD = 1 / baseCurrencyData.baseRate;
-                rate = currencyInUSD / baseInUSD;
-            }
-        }
-
-        // Filter by price range
-        const minPrice = parseFloat(filters.minPrice) || 0;
-        const maxPrice = parseFloat(filters.maxPrice) || Number.MAX_SAFE_INTEGER;
-
-        // For the price range, we want to show how much 1 unit of the currency is worth in the base currency
-        const priceInBaseCurrency = 1 / rate;
-        const matchesPrice = priceInBaseCurrency >= minPrice && priceInBaseCurrency <= maxPrice;
-
-        // Filter by max amount
-        const minMaxAmount = parseFloat(filters.minMaxAmount) || 0;
-        const matchesMaxAmount = currency.maxAmount >= minMaxAmount;
-
-        // Filter by currency code
-        const matchesCurrency = !filters.currency || currency.code === filters.currency;
-
-        return matchesSearch && matchesPrice && matchesMaxAmount && matchesCurrency;
-    });
-
-    const handleExchangeClick = (currency: Currency) => {
         setSelectedCurrency(currency);
-        setShowExchangeModal(true);
-    };
+        setShowBuyModal(true);
+    }, [isAuthenticated]);
 
-    const handleExchangeSubmit = async (e: React.FormEvent) => {
+    const handleBuySubmit = useCallback((e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedCurrency) return;
 
-        const amountNum = parseFloat(amount || '0');
-        const baseCurrencyRate = listings.find(c => c.code === baseCurrency)?.baseRate || 1;
-        const amountInUsd = amountNum / baseCurrencyRate;
-
-        // Calculate the fee in USD
-        const feeInUsd = amountInUsd * (selectedCurrency.fee / 100);
-        const receiveAmount = amountInUsd - feeInUsd;
-
-        // Prepare the data to submit
-        const formData = {
-            listing_id: selectedCurrency.id,
-            amount: amountNum,
-            from_currency: baseCurrency,
-            to_currency: selectedCurrency.code,
-            receive_amount: receiveAmount,
-            exchange_rate: 1, // 1:1 for same currency
-            real_rate: 1, // 1:1 for same currency
-            fee_amount: feeInUsd,
-            fee_percentage: selectedCurrency.fee,
-            amount_in_usd: amountInUsd
-        };
-
-        try {
-            const response = await router.post('/orders', formData, {
-                preserveScroll: true,
-                onSuccess: (page) => {
-                    setShowExchangeModal(false);
-                    setAmount('');
-                    toast.success('Order created successfully!');
-                    if (page.props.redirect && typeof page.props.redirect === 'string' && page.props.redirect.trim() !== '') {
-                        router.visit(page.props.redirect);
-                    }
-                },
-                onError: (errors) => {
-                    // Handle validation errors
-                    if (errors.message) {
-                        toast.error(errors.message);
-                    } else {
-                        toast.error('Failed to create order. Please try again.');
-                    }
-                }
-            });
-
-        } catch (error) {
-            console.error('Error submitting order:', error);
-            toast.error('An unexpected error occurred. Please try again.');
+        if (!isAuthenticated) {
+            router.visit(route('login', { return: window.location.pathname }));
+            return;
         }
-    };
 
-    const calculateReceiveAmount = () => {
-        if (!amount || !selectedCurrency) return '0.00';
-        const amountNum = parseFloat(amount);
-
-        // If same currency, return the amount (no conversion needed)
-        if (baseCurrency === selectedCurrency.code) {
-            return amountNum.toFixed(2);
+        if (!selectedCurrency) {
+            console.error('No currency selected');
+            return;
         }
 
         // Get the base currency rate (how much USD is 1 unit of base currency)
-        const baseCurrencyRate = listings.find(c => c.code === baseCurrency)?.baseRate || 1;
+        const baseCurrencyRate = listings.find((c) => c.code === userBaseCurrency)?.baseRate || 1;
 
-        // Convert amount to USD first
-        const amountInUsd = amountNum / baseCurrencyRate;
-
-        // Calculate fee in USD
-        const feeInUsd = (amountInUsd * selectedCurrency.fee) / 100;
-
-        // Calculate amount after fee in USD
-        const amountAfterFeeInUsd = amountInUsd - feeInUsd;
-
-        // If target currency is USD, return the USD amount
-        if (selectedCurrency.code === 'USD') {
-            return amountAfterFeeInUsd.toFixed(2);
+        // Convert input amount to USD
+        const amountNum = parseFloat(amount);
+        if (Number.isNaN(amountNum)) {
+            console.error('Invalid amount');
+            return;
         }
 
-        // Convert USD to target currency using the target's baseRate
-        const targetCurrencyRate = listings.find(c => c.code === selectedCurrency.code)?.baseRate || 1;
-        return (amountAfterFeeInUsd * targetCurrencyRate).toFixed(2);
+        const amountInUsd = amountNum / baseCurrencyRate;
+
+        // Calculate the fee in USD
+        const feeInUsd = (amountInUsd * selectedCurrency.fee) / 100;
+
+        // Calculate the amount after fee in USD
+        const amountAfterFeeInUsd = amountInUsd - feeInUsd;
+
+        // Convert to target currency
+        let receiveAmount;
+        if (selectedCurrency.code === 'USD') {
+            receiveAmount = amountAfterFeeInUsd;
+        } else {
+            const targetCurrencyRate = selectedCurrency.baseRate || 1;
+            receiveAmount = amountAfterFeeInUsd * targetCurrencyRate;
+        }
+
+        // Calculate the effective exchange rate (including fee)
+        const effectiveRate = amountNum / receiveAmount;
+
+        // Get the real rate from from_currency to to_currency
+        let realRate;
+        if (selectedCurrency.from_currency === 'USD') {
+            realRate = selectedCurrency.baseRate;
+        } else if (selectedCurrency.to_currency === 'USD') {
+            const fromCurrency = listings.find(c => c.code === selectedCurrency.from_currency);
+            realRate = fromCurrency ? 1 / fromCurrency.baseRate : 1;
+        } else {
+            const fromCurrency = listings.find(c => c.code === selectedCurrency.from_currency);
+            realRate = fromCurrency ? selectedCurrency.baseRate / fromCurrency.baseRate : selectedCurrency.baseRate;
+        }
+
+        alert(`Exchange Summary:\n\n` +
+            `You will receive: ${receiveAmount.toFixed(2)} ${selectedCurrency.to_currency}\n` +
+            `Amount to pay: ${amountNum} ${selectedCurrency.from_currency}\n` +
+            `Fee: ${feeInUsd.toFixed(2)} USD (${selectedCurrency.fee}% of ${amountInUsd.toFixed(2)} USD)\n` +
+            `Exchange rate: 1 ${selectedCurrency.to_currency} = ${(1 / effectiveRate).toFixed(4)} ${selectedCurrency.from_currency}\n` +
+            `(Real rate: 1 ${selectedCurrency.to_currency} = ${realRate.toFixed(4)} ${selectedCurrency.from_currency})`
+        );
+
+        setShowBuyModal(false);
+        setAmount('');
+    });
+
+    // Calculate the exchange details for a given amount in to_currency (what the user wants to receive)
+    const calculateRequiredAmount = (desiredAmount: number) => {
+        if (!selectedCurrency) return {
+            requiredAmount: '0.00',
+            receiveAmount: '0.00',
+            fee: '0.00'
+        };
+
+        // If same currency, just apply fee
+        if (selectedCurrency.from_currency === selectedCurrency.to_currency) {
+            const fee = (desiredAmount * selectedCurrency.fee) / 100;
+            return {
+                requiredAmount: (desiredAmount + fee).toFixed(2),
+                receiveAmount: desiredAmount.toFixed(2),
+                fee: fee.toFixed(2)
+            };
+        }
+
+        // Get the exchange rates
+        const fromRate = listings.find(c => c.code === selectedCurrency.from_currency)?.baseRate || 1;
+        const toRate = listings.find(c => c.code === selectedCurrency.to_currency)?.baseRate || 1;
+
+        // Calculate the base exchange rate (without fee)
+        const baseRate = toRate / fromRate;
+
+        // Calculate the amount to receive in from_currency (after fee)
+        const receiveAmount = desiredAmount / baseRate;
+
+        // Calculate the fee in from_currency
+        const feeAmount = (receiveAmount * selectedCurrency.fee) / 100;
+
+        // Total amount to pay in to_currency (desired amount + fee in to_currency)
+        const requiredAmount = desiredAmount + (feeAmount * baseRate);
+
+        return {
+            requiredAmount: requiredAmount.toFixed(2),  // Total to pay in to_currency
+            receiveAmount: receiveAmount.toFixed(2),    // Amount to receive in from_currency
+            fee: (feeAmount * baseRate).toFixed(2)      // Fee in to_currency
+        };
+    };
+
+    // Calculate how much the user will receive (to currency) for a given from amount
+    const calculateReceiveAmount = (fromAmount?: string | number) => {
+        // If no amount or selected currency, return 0.00
+        if (!selectedCurrency || fromAmount === undefined || fromAmount === '') return '0.00';
+
+        // Convert to number safely
+        const amountNum = typeof fromAmount === 'string' ? parseFloat(fromAmount) : Number(fromAmount);
+        if (isNaN(amountNum) || amountNum <= 0) return '0.00';
+
+        // If same currency, just apply fee
+        if (selectedCurrency.from_currency === selectedCurrency.to_currency) {
+            const fee = (amountNum * selectedCurrency.fee) / 100;
+            return (amountNum - fee).toFixed(2);
+        }
+
+        // Get exchange rates with fallbacks
+        const fromRate = listings.find(c => c.code === selectedCurrency.from_currency)?.baseRate || 1;
+        const toRate = listings.find(c => c.code === selectedCurrency.to_currency)?.baseRate || 1;
+
+        // Calculate base exchange rate and apply fee to the from_amount
+        const baseRate = toRate / fromRate;
+        const amountAfterFee = amountNum * (1 - selectedCurrency.fee / 100);
+
+        // Calculate how much to_currency they'll receive after fee is taken from from_amount
+        return (amountAfterFee * baseRate).toFixed(2);
     };
 
     return (
@@ -266,7 +260,7 @@ export default function Marketplace({ listings, currencyGroups, tabs, auth }: Pa
                         <div className="mb-4 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500">
-                                    <BsCurrencyExchange className="text-white text-xl" />
+                                    <span className="text-white font-bold">◑</span>
                                 </div>
                                 <span className="text-lg font-bold text-gray-900 dark:text-white">CrossPay FX</span>
                             </div>
@@ -327,131 +321,30 @@ export default function Marketplace({ listings, currencyGroups, tabs, auth }: Pa
 
                 {/* Main Content */}
                 <main className="mx-auto max-w-7xl px-6 py-8">
-                    {/* Filter Controls */}
-                    {/* Filter Section */}
+                    {/* Search Bar */}
                     <div className="mb-8">
-                        <div className="border-b border-gray-200 dark:border-slate-700 pb-5">
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                                <div>
-                                    <h2 className="text-lg font-medium text-gray-900 dark:text-white">Marketplace</h2>
-                                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                                        Filter and find the best exchange rates
-                                    </p>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="relative flex-1 max-w-md">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <Search className="h-4 w-4 text-gray-400" />
-                                        </div>
-                                        <input
-                                            type="text"
-                                            placeholder="Search currencies..."
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-slate-700 rounded-md leading-5 bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                        />
-                                    </div>
-                                    <button
-                                        onClick={clearFilters}
-                                        className="inline-flex items-center px-3.5 py-2 border border-gray-300 dark:border-slate-700 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                                    >
-                                        <span>Clear</span>
-                                    </button>
-                                </div>
+                        <div className="flex gap-3">
+                            <div className="flex-1 relative">
+                                <input
+                                    type="text"
+                                    placeholder="Search currencies..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
+                                />
                             </div>
+                            <button className="rounded-lg bg-blue-500 px-6 py-3 text-white hover:bg-blue-600">
+                                <Search className="h-5 w-5" />
+                            </button>
+                        </div>
+                    </div>
 
-                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                {/* Price Range Filter */}
-                                <div className="space-y-1">
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                        Price Range ({baseCurrency})
-                                    </label>
-                                    <div className="flex space-x-2">
-                                        <div className="flex-1">
-                                            <input
-                                                type="number"
-                                                name="minPrice"
-                                                value={filters.minPrice}
-                                                onChange={handleFilterChange}
-                                                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                                placeholder="Min"
-                                                min="0"
-                                                step="0.0001"
-                                            />
-                                        </div>
-                                        <div className="flex-1">
-                                            <input
-                                                type="number"
-                                                name="maxPrice"
-                                                value={filters.maxPrice}
-                                                onChange={handleFilterChange}
-                                                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                                placeholder="Max"
-                                                min="0"
-                                                step="0.0001"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Max Amount Filter */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                        Min. Exchange Amount
-                                    </label>
-                                    <div className="mt-1 relative rounded-md shadow-sm">
-                                        <input
-                                            type="number"
-                                            name="minMaxAmount"
-                                            value={filters.minMaxAmount}
-                                            onChange={handleFilterChange}
-                                            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                            placeholder="Enter amount"
-                                            min="0"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Currency Filter */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                        Currency
-                                    </label>
-                                    <div className="mt-1">
-                                        <select
-                                            name="currency"
-                                            value={filters.currency}
-                                            onChange={handleFilterChange}
-                                            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                        >
-                                            <option value="">All Currencies</option>
-                                            {Array.from(new Set(listings.map(c => c.code))).map(code => (
-                                                <option key={code} value={code}>{code}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Base Currency Selector */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                        Base Currency
-                                    </label>
-                                    <div className="mt-1">
-                                        <select
-                                            value={baseCurrency}
-                                            onChange={(e) => setBaseCurrency(e.target.value)}
-                                            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                        >
-                                            {listings.map(currency => (
-                                                <option key={currency.code} value={currency.code}>
-                                                    {currency.code}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
+                    {/* Last Updated */}
+                    <div className="mb-6 flex items-center justify-end">
+                        <div className="flex items-center gap-4 text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">
+                                Last Updated: {new Date().toLocaleString()}
+                            </span>
                         </div>
                     </div>
 
@@ -467,21 +360,27 @@ export default function Marketplace({ listings, currencyGroups, tabs, auth }: Pa
                                         Currency
                                     </th>
                                     <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        Rate ({baseCurrency})
+                                        Max Available for Exchange
                                     </th>
                                     <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        Max Exchange
+                                        Rate (1 {userBaseCurrency} = )
                                     </th>
                                     <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        Last Updated
+                                        24h Change
                                     </th>
                                     <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-
+                                        24h High
+                                    </th>
+                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
+                                        24h Low
+                                    </th>
+                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
+                                        Click to Exchange
                                     </th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredListings.map((currency, idx) => (
+                                {filteredCurrencies.map((currency, idx) => (
                                     <tr
                                         key={currency.id}
                                         className={`border-b border-gray-200 dark:border-slate-800 ${idx % 2 === 0
@@ -502,22 +401,39 @@ export default function Marketplace({ listings, currencyGroups, tabs, auth }: Pa
                                                 </span>
                                             </div>
                                         </td>
+                                        <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
+                                            {formatRate(currency.amount, 4)} {selectedCurrency?.code || ''}
+                                        </td>
                                         <td className="px-6 py-4">
                                             <span className="text-sm font-medium text-gray-900 dark:text-white">
-                                                1 {currency.code} = {formatRate(1 / currency.rate)} {selectedCurrency}
+                                                1 {currency.code} = {formatRate(1 / currency.rate)} {userBaseCurrency}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span
+                                                className={`text-sm font-medium ${currency.change24h >= 0
+                                                    ? 'text-green-600 dark:text-green-400'
+                                                    : 'text-red-600 dark:text-red-400'
+                                                    }`}
+                                            >
+                                                {currency.change24h >= 0 ? '+' : ''}
+                                                {formatChange(currency.change24h)}%
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="text-sm text-gray-900 dark:text-white">
-                                                Up to {currency.maxAmount.toLocaleString()} {currency.code}
+                                                {formatRate(1 / currency.high24h)}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                                            {formatDate(currency.lastUpdated)}
+                                        <td className="px-6 py-4">
+                                            <span className="text-sm text-gray-900 dark:text-white">
+                                                {formatRate(1 / currency.low24h)}
+                                            </span>
                                         </td>
+
                                         <td className="px-6 py-4">
                                             <button
-                                                onClick={() => handleExchangeClick(currency)}
+                                                onClick={() => handleBuyClick(currency)}
                                                 className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm w-full"
                                             >
                                                 Exchange {currency.code}
@@ -536,8 +452,8 @@ export default function Marketplace({ listings, currencyGroups, tabs, auth }: Pa
                 </main>
             </div>
 
-            {/* Exchange Currency Modal */}
-            {showExchangeModal && selectedCurrency && (
+            {/* Buy Currency Modal */}
+            {showBuyModal && selectedCurrency && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md">
                         <div className="flex justify-between items-center mb-4">
@@ -545,115 +461,70 @@ export default function Marketplace({ listings, currencyGroups, tabs, auth }: Pa
                                 Exchange {selectedCurrency.name} ({selectedCurrency.code})
                             </h3>
                             <button
-                                onClick={() => setShowExchangeModal(false)}
+                                onClick={() => setShowBuyModal(false)}
                                 className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                             >
                                 ✕
                             </button>
                         </div>
 
-                        <form onSubmit={handleExchangeSubmit}>
-                            <div className="mb-4">
-                                <div className="flex justify-between items-center mb-2">
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                        From:
-                                    </label>
-                                    <select
-                                        value={baseCurrency}
-                                        onChange={(e) => setBaseCurrency(e.target.value)}
-                                        className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                                    >
-                                        {listings.map((currency) => (
-                                            <option key={currency.code} value={currency.code}>
-                                                {currency.code}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    Amount to Exchange ({baseCurrency})
+                        <form onSubmit={handleBuySubmit}>
+                            <div className="mb-6">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    Amount to Pay
                                 </label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <span className="text-gray-500">{baseCurrency === 'USD' ? '$' : baseCurrency === 'EUR' ? '€' : baseCurrency === 'GBP' ? '£' : baseCurrency === 'JPY' ? '¥' : baseCurrency}</span>
+                                <div className="relative rounded-lg border-0 bg-white dark:bg-slate-800 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="py-4 px-4">
+                                                <span className="block text-2xl font-semibold text-gray-900 dark:text-white">
+                                                    {Number(selectedCurrency?.total_amount)?.toLocaleString('en-US', {
+                                                        minimumFractionDigits: 2,
+                                                        maximumFractionDigits: 2
+                                                    })}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex-shrink-0 bg-gray-50 dark:bg-slate-700 px-4 py-4 border-l border-gray-200 rounded dark:border-gray-600">
+                                            <span className="inline-flex items-center px-2.5 py-0.5 text-1xl font-bold text-white-400 dark:text-white-200">
+                                                {selectedCurrency?.to_currency}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <input
-                                        type="number"
-                                        id="amount-input"
-                                        value={amount}
-                                        onChange={(e) => setAmount(e.target.value)}
-                                        min={selectedCurrency.minAmount}
-                                        max={selectedCurrency.maxAmount}
-                                        step="0.01"
-                                        className="pl-8 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white p-2"
-                                        placeholder={`0.00 ${baseCurrency}`}
-                                        required
-                                    />
                                 </div>
-                                <div className="text-xs text-gray-500 mt-1">
-                                    Min: {selectedCurrency.minAmount} {selectedCurrency.code} - Max: {selectedCurrency.maxAmount} {selectedCurrency.code}
-                                </div>
+
+                                {/* Hidden input for form submission */}
+                                <input
+                                    type="hidden"
+                                    name="amount"
+                                    value={selectedCurrency?.total_amount || '0'}
+                                />
+
                             </div>
 
                             <div className="mb-4 p-4 bg-gray-50 dark:bg-slate-700 rounded-md">
                                 <div className="flex justify-between mb-2">
-                                    <span className="text-sm text-gray-600 dark:text-gray-300">Exchange Rate (with fee):</span>
-                                    <span className="text-sm font-medium">1 {baseCurrency} = {
+                                    <span className="text-sm text-gray-600 dark:text-gray-300">Exchange Rate (with {selectedCurrency.fee}% fee):</span>
+                                    <span className="text-sm font-medium">1 {selectedCurrency.from_currency} = {
                                         (() => {
-                                            if (baseCurrency === selectedCurrency.code) return '1.0000';
-                                            const baseRate = listings.find(c => c.code === baseCurrency)?.baseRate || 1;
-                                            const targetRate = listings.find(c => c.code === selectedCurrency.code)?.baseRate || 1;
-                                            const feeMultiplier = 1 + (selectedCurrency.fee / 100);
-                                            return (targetRate / baseRate * feeMultiplier).toFixed(4);
+                                            if (selectedCurrency.from_currency === selectedCurrency.to_currency) return '1.0000';
+                                            const fromRate = listings.find(c => c.code === selectedCurrency.from_currency)?.baseRate || 1;
+                                            const toRate = listings.find(c => c.code === selectedCurrency.to_currency)?.baseRate || 1;
+                                            const directRate = toRate / fromRate;
+                                            // Apply fee to the rate
+                                            return (directRate * (1 - selectedCurrency.fee / 100)).toFixed(4);
                                         })()
-                                    } {selectedCurrency.code}</span>
-                                </div>
-                                <div className="flex justify-between mb-1 text-xs text-gray-500">
-                                    <span>Real Exchange Rate:</span>
-                                    <span>1 {baseCurrency} = {
-                                        baseCurrency === selectedCurrency.code
-                                            ? '1.0000'
-                                            : (() => {
-                                                const baseRate = listings.find(c => c.code === baseCurrency)?.baseRate || 1;
-                                                const targetRate = listings.find(c => c.code === selectedCurrency.code)?.baseRate || 1;
-                                                return (targetRate / baseRate).toFixed(4);
-                                            })()
-                                    } {selectedCurrency.code}</span>
-                                </div>
-                                <div className="flex justify-between mb-2 text-xs text-gray-500">
-                                    <span>Inverse Rate:</span>
-                                    <span>1 {selectedCurrency.code} = {
-                                        (() => {
-                                            if (baseCurrency === selectedCurrency.code) return '1.0000';
-                                            const baseRate = listings.find(c => c.code === baseCurrency)?.baseRate || 1;
-                                            const targetRate = listings.find(c => c.code === selectedCurrency.code)?.baseRate || 1;
-                                            const feeMultiplier = 1 + (selectedCurrency.fee / 100);
-                                            return (baseRate / (targetRate * feeMultiplier)).toFixed(4);
-                                        })()
-                                    } {baseCurrency}</span>
+                                    } {selectedCurrency.to_currency}</span>
                                 </div>
                                 <div className="flex justify-between mb-2 text-xs text-gray-500">
                                     <span>Fee:</span>
-                                    <span>{selectedCurrency.fee}% ({
-                                        (() => {
-                                            const baseCurrencyRate = listings.find(c => c.code === baseCurrency)?.baseRate || 1;
-                                            const amountInUsd = parseFloat(amount || '0') / baseCurrencyRate;
-                                            const feeInUsd = (amountInUsd * selectedCurrency.fee) / 100;
-                                            return `$${feeInUsd.toFixed(2)} USD`;
-                                        })()
-                                    })</span>
+                                    <span>{selectedCurrency.fee}%</span>
                                 </div>
                                 <div className="flex justify-between font-semibold pt-2 border-t border-gray-200 dark:border-gray-600">
                                     <span className="text-gray-900 dark:text-white">You'll receive:</span>
                                     <div className="text-right">
                                         <div className="text-blue-600 dark:text-blue-400 font-semibold">
-                                            {calculateReceiveAmount()} {selectedCurrency?.code}
-                                        </div>
-                                        <div className="text-xs text-gray-500">
-                                            = {amount || '0'} {baseCurrency}
-                                        </div>
-                                        <div className="text-xs text-gray-500 mt-1">
-                                            (Fee: {selectedCurrency ? (parseFloat(amount || '0') * selectedCurrency.baseRate * selectedCurrency.fee / 100).toFixed(2) : '0.00'} USD)
+                                            {selectedCurrency?.amount || '0'} {selectedCurrency?.from_currency}
                                         </div>
                                     </div>
                                 </div>
@@ -662,7 +533,7 @@ export default function Marketplace({ listings, currencyGroups, tabs, auth }: Pa
                             <div className="flex justify-end gap-3">
                                 <button
                                     type="button"
-                                    onClick={() => setShowExchangeModal(false)}
+                                    onClick={() => setShowBuyModal(false)}
                                     className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700"
                                 >
                                     Cancel

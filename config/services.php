@@ -18,6 +18,11 @@ return [
         'key' => env('POSTMARK_API_KEY'),
     ],
 
+    'exchangerate' => [
+        'key' => env('EXCHANGERATE_API_KEY'),
+        'base_url' => env('EXCHANGERATE_API_URL', 'https://api.exchangerate-api.com/v4'),
+    ],
+
     'resend' => [
         'key' => env('RESEND_API_KEY'),
     ],

@@ -113,7 +113,4 @@ class User extends Authenticatable implements WalletOperations
         
         return $query->sum('net_amount');
     }
-
-
-
 }

@@ -15,7 +15,7 @@ use Laravel\Fortify\Fortify;
 
 // Public marketplace
 Route::get('/', function () {
-    return Inertia::render('welcome', [
+    return Inertia::render('home', [
         'canRegister' => Features::enabled(Features::registration()),
     ]);
 })->name('home');
@@ -28,10 +28,45 @@ Route::get('/marketplace/{listing}', [MarketplaceController::class, 'show'])->na
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', function () {
-        $balance = LaravelPayPocket::checkBalance(auth()->user());
+        $user = auth()->user();
+        $balance = LaravelPayPocket::checkBalance($user);
+        
+        // Get the user's wallet balance (available to spend)
+        $walletBalance = $user->walletBalance; // This assumes you have a walletBalance attribute or method on the User model
+        
+        // Get recent transactions (if any)
+        // Get active listings count
+        $activeListingsCount = $user->listings()
+            ->where('status', 'active')
+            ->count();
+            
+        $recentTransactions = [];
+        if (method_exists($user, 'transactions')) {
+            $recentTransactions = $user->transactions()
+                ->latest()
+                ->take(5)
+                ->get()
+                ->map(function($transaction) {
+                    return [
+                        'id' => $transaction->id,
+                        'description' => $transaction->description,
+                        'amount' => (float) $transaction->amount,
+                        'type' => strtolower($transaction->type),
+                        'status' => strtolower($transaction->status),
+                        'date' => $transaction->created_at->toIso8601String(),
+                    ];
+                });
+        }
 
         return Inertia::render('dashboard', [
             'balance' => $balance,
+            'availableBalance' => $walletBalance ?? $balance, // Fallback to total balance if walletBalance is not available
+            'activeListingsCount' => $activeListingsCount,
+            'recentTransactions' => $recentTransactions,
+            'exchangeRates' => [
+                // Add any exchange rate data here if needed
+                // Example: ['from' => 'USD', 'to' => 'EUR', 'rate' => 0.85, 'change' => 0.01]
+            ],
         ]);
     })->name('dashboard');
 
