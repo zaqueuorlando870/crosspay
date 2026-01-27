@@ -58,6 +58,7 @@ import { LogOut, User as UserIcon } from 'lucide-react';
 import {
     Search,
 } from 'lucide-react';
+import { BsCurrencyExchange } from 'react-icons/bs';
 
 // Single interface for currency/listing data
 interface Currency extends Omit<Listing, 'originalData'> {
@@ -128,35 +129,13 @@ export default function Marketplace() {
             return;
         }
 
-        // Get the base currency rate (how much USD is 1 unit of base currency)
-        const baseCurrencyRate = listings.find((c) => c.code === userBaseCurrency)?.baseRate || 1;
-
-        // Convert input amount to USD
-        const amountNum = parseFloat(amount);
-        if (Number.isNaN(amountNum)) {
-            console.error('Invalid amount');
-            return;
-        }
-
-        const amountInUsd = amountNum / baseCurrencyRate;
-
-        // Calculate the fee in USD
-        const feeInUsd = (amountInUsd * selectedCurrency.fee) / 100;
-
-        // Calculate the amount after fee in USD
-        const amountAfterFeeInUsd = amountInUsd - feeInUsd;
-
-        // Convert to target currency
-        let receiveAmount;
-        if (selectedCurrency.code === 'USD') {
-            receiveAmount = amountAfterFeeInUsd;
-        } else {
-            const targetCurrencyRate = selectedCurrency.baseRate || 1;
-            receiveAmount = amountAfterFeeInUsd * targetCurrencyRate;
-        }
-
-        // Calculate the effective exchange rate (including fee)
-        const effectiveRate = amountNum / receiveAmount;
+        // Redirect to the order creation page with the necessary parameters
+        router.visit(route('orders.store', {
+            listing: selectedCurrency.id,
+            amount: selectedCurrency.total_amount,
+            from_currency: selectedCurrency.from_currency,
+            to_currency: selectedCurrency.to_currency
+        }));
 
         // Get the real rate from from_currency to to_currency
         let realRate;
@@ -169,14 +148,6 @@ export default function Marketplace() {
             const fromCurrency = listings.find(c => c.code === selectedCurrency.from_currency);
             realRate = fromCurrency ? selectedCurrency.baseRate / fromCurrency.baseRate : selectedCurrency.baseRate;
         }
-
-        alert(`Exchange Summary:\n\n` +
-            `You will receive: ${receiveAmount.toFixed(2)} ${selectedCurrency.to_currency}\n` +
-            `Amount to pay: ${amountNum} ${selectedCurrency.from_currency}\n` +
-            `Fee: ${feeInUsd.toFixed(2)} USD (${selectedCurrency.fee}% of ${amountInUsd.toFixed(2)} USD)\n` +
-            `Exchange rate: 1 ${selectedCurrency.to_currency} = ${(1 / effectiveRate).toFixed(4)} ${selectedCurrency.from_currency}\n` +
-            `(Real rate: 1 ${selectedCurrency.to_currency} = ${realRate.toFixed(4)} ${selectedCurrency.from_currency})`
-        );
 
         setShowBuyModal(false);
         setAmount('');
@@ -260,15 +231,11 @@ export default function Marketplace() {
                         <div className="mb-4 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500">
-                                    <span className="text-white font-bold">◑</span>
+                                    <BsCurrencyExchange className="text-white text-xl" />
                                 </div>
-                                <span className="text-lg font-bold text-gray-900 dark:text-white">CrossPay FX</span>
+                                <span className="text-lg font-bold text-gray-900 dark:text-white">CrossPay</span>
                             </div>
                             <div className="flex items-center gap-6">
-                                <div className="hidden md:flex items-center gap-6 text-sm">
-                                    <span className="text-gray-600 dark:text-gray-400">Last Updated: {new Date().toLocaleString()}</span>
-                                    <span className="text-gray-600 dark:text-gray-400">Currencies: {listings.length}</span>
-                                </div>
                                 <div className="flex items-center gap-3">
                                     {auth.user ? (
                                         <DropdownMenu>
@@ -360,7 +327,7 @@ export default function Marketplace() {
                                         Currency
                                     </th>
                                     <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        Max Available for Exchange
+                                        Amount available for exchange
                                     </th>
                                     <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
                                         Rate (1 {userBaseCurrency} = )
