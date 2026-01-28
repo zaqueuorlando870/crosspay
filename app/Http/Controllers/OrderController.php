@@ -102,6 +102,29 @@ public function store(Request $request)
     }
     \Log::info('Currency Validation Passed');
 
+    // Check if user's currency aligns with the to_currency
+    \Log::info('User Currency Check', [
+        'user_id' => $user->id,
+        'user_currency' => $user->currency,
+        'to_currency' => $toCurrency,
+        'from_currency' => $fromCurrency
+    ]);
+
+    if ($user->currency !== $toCurrency) {
+        \Log::error('User Currency Mismatch', [
+            'user_currency' => $user->currency,
+            'to_currency' => $toCurrency,
+            'error' => 'User currency does not match the target currency'
+        ]);
+        return response()->json([
+            'success' => false,
+            'error' => 'Your account currency (' . $user->currency . ') does not match the target currency (' . $toCurrency . '). Please update your profile settings or select a different listing.',
+            'user_currency' => $user->currency,
+            'to_currency' => $toCurrency
+        ], 422);
+    }
+    \Log::info('User Currency Validation Passed');
+
     // Check if listing is active
     if (!$listing->isActive()) {
         \Log::error('Listing Not Active', [
@@ -159,6 +182,9 @@ public function store(Request $request)
         'available_balance' => $walletBalance,
         'sufficient' => $walletBalance >= $amount
     ]);
+
+
+    
 
     if ($walletBalance < $amount) {
         \Log::error('Insufficient Balance', [

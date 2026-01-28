@@ -29,7 +29,18 @@ class ListingController extends Controller
         $validated['to_currency'] = $request->currency;
         $listing = $request->user()->listings()->create($validated);
         $user = auth()->user();
-        $user->pay($validated['amount']);
+        
+        try {
+            $user->pay($validated['amount']);
+        } catch (\HPWebdeveloper\LaravelPayPocket\Exceptions\InsufficientBalanceException $e) {
+            // Delete the listing since payment failed
+            $listing->delete();
+            
+            return back()->withErrors([
+                'amount' => 'Insufficient balance. You need ' . number_format($validated['amount'], 2) . ' ' . auth()->user()->currency . ' to create this listing. Please add funds to your wallet and try again.'
+            ])->withInput();
+        }
+        
         $transaction = $request->user()->transactions()->create([
             'wallet_id' => auth()->user()->id,
             'amount' => -$validated['amount'],

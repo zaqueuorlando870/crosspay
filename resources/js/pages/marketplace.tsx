@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
 import { router } from '@inertiajs/react';
 import { login, register, logout } from '@/routes';
 import { toast } from 'sonner';
+import ReactCountryFlag from 'react-country-flag';
 
 // Use the route function from ziggy-js if needed
 const route = window.route || ((name: string, params = {}) => {
@@ -50,6 +51,12 @@ interface PageProps {
     };
     user?: User;
     listings: Listing[];
+    pagination?: {
+        current_page: number;
+        last_page: number;
+        per_page: number;
+        total: number;
+    };
     route?: string;
     success?: string | object;
     flash?: {
@@ -59,9 +66,12 @@ interface PageProps {
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { LogOut, User as UserIcon } from 'lucide-react';
 import {
     Search,
+    Filter,
+    User as UserIcon,
+    Settings,
+    LogOut,
 } from 'lucide-react';
 import { BsCurrencyExchange } from 'react-icons/bs';
 
@@ -72,19 +82,211 @@ interface Currency extends Omit<Listing, 'originalData'> {
 
 
 export default function Marketplace() {
-    const { auth, listings } = usePage<PageProps>().props;
+    const { auth, listings, pagination } = usePage<PageProps>().props;
     const isAuthenticated = Boolean(auth?.user);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCurrency, setSelectedCurrency] = useState<Currency | null>(null);
     const [amount, setAmount] = useState('');
     const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
     const [showBuyModal, setShowBuyModal] = useState(false);
+    const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
+    
+    // Infinity scroll states
+    const [allListings, setAllListings] = useState<Listing[]>(listings || []);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [isLoading, setIsLoading] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
+    const observer = useRef<IntersectionObserver>();
+    const lastListingRef = useRef<HTMLTableRowElement>(null);
+    
+    // Scroll fade states
+    const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
+    const [isScrolling, setIsScrolling] = useState(false);
+    const [showTopFade, setShowTopFade] = useState(false);
+    const [showBottomFade, setShowBottomFade] = useState(true);
+    const scrollTimeout = useRef<NodeJS.Timeout>();
 
     // Get user's base currency from auth or default to USD
     const [userBaseCurrency, setUserBaseCurrency] = useState(auth?.user?.currency || 'USD');
 
-    // Show all available currencies
-    const filteredCurrencies = listings || [];
+    // Initialize hasMore based on pagination
+    useEffect(() => {
+        if (pagination) {
+            setHasMore(currentPage < pagination.last_page);
+        }
+    }, [pagination, currentPage]);
+
+    // Load more listings
+    const loadMoreListings = useCallback(async () => {
+        if (isLoading || !hasMore) return;
+        
+        setIsLoading(true);
+        const nextPage = currentPage + 1;
+        
+        try {
+            const params = new URLSearchParams({
+                page: nextPage.toString(),
+                ...(searchQuery && { search: searchQuery }),
+                ...(selectedFilters.length > 0 && { filters: selectedFilters.join(',') })
+            });
+            
+            const response = await fetch(`/marketplace?${params}`);
+            const data = await response.json();
+            
+            if (data.props.listings && data.props.listings.length > 0) {
+                setAllListings(prev => [...prev, ...data.props.listings]);
+                setCurrentPage(nextPage);
+                
+                if (data.props.pagination) {
+                    setHasMore(nextPage < data.props.pagination.last_page);
+                } else {
+                    setHasMore(data.props.listings.length < 20); // Assume 20 is default page size
+                }
+            } else {
+                setHasMore(false);
+            }
+        } catch (error) {
+            console.error('Error loading more listings:', error);
+            setHasMore(false);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [currentPage, isLoading, hasMore, searchQuery, selectedFilters]);
+
+    // Intersection observer for infinity scroll
+    useEffect(() => {
+        if (isLoading) return;
+        
+        if (observer.current) observer.current.disconnect();
+        
+        observer.current = new IntersectionObserver(
+            entries => {
+                if (entries[0].isIntersecting && hasMore) {
+                    loadMoreListings();
+                }
+            },
+            { threshold: 0.1 }
+        );
+        
+        if (lastListingRef.current) {
+            observer.current.observe(lastListingRef.current);
+        }
+        
+        return () => {
+            if (observer.current) observer.current.disconnect();
+        };
+    }, [isLoading, hasMore, loadMoreListings]);
+
+    // Reset listings when filters or search changes
+    useEffect(() => {
+        setAllListings(listings || []);
+        setCurrentPage(1);
+        setHasMore(true);
+        setIsLoading(false);
+    }, [searchQuery, selectedFilters, listings]);
+
+    // Handle scroll events for fade effects
+    const handleScroll = useCallback(() => {
+        if (!scrollContainer) return;
+        
+        setIsScrolling(true);
+        
+        // Clear existing timeout
+        if (scrollTimeout.current) {
+            clearTimeout(scrollTimeout.current);
+        }
+        
+        // Set new timeout to detect when scrolling stops
+        scrollTimeout.current = setTimeout(() => {
+            setIsScrolling(false);
+        }, 150);
+        
+        // Check scroll position for fade effects
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+        setShowTopFade(scrollTop > 10);
+        setShowBottomFade(scrollTop < scrollHeight - clientHeight - 10);
+    }, [scrollContainer]);
+
+    // Add scroll event listener
+    useEffect(() => {
+        const container = scrollContainer;
+        if (!container) return;
+        
+        container.addEventListener('scroll', handleScroll, { passive: true });
+        
+        // Initial check
+        handleScroll();
+        
+        return () => {
+            container.removeEventListener('scroll', handleScroll);
+            if (scrollTimeout.current) {
+                clearTimeout(scrollTimeout.current);
+            }
+        };
+    }, [scrollContainer, handleScroll]);
+
+    // Filter currencies based on search and currency pair filters
+    const filteredCurrencies = allListings?.filter(currency => {
+        const matchesSearch = searchQuery === '' || 
+            currency.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            currency.code.toLowerCase().includes(searchQuery.toLowerCase());
+        
+        const matchesCurrencyFilter = selectedFilters.length === 0 || 
+            selectedFilters.includes(`${currency.from_currency} → ${currency.to_currency}`);
+        
+        return matchesSearch && matchesCurrencyFilter;
+    }) || [];
+
+    // Get unique currency pairs from available listings for dynamic filter options
+    const uniqueCurrencyPairs = [...new Set(
+        allListings?.map(l => `${l.from_currency} → ${l.to_currency}`) || []
+    )].sort();
+
+    // Format relative time
+    const formatRelativeTime = (dateString: string): string => {
+        const now = new Date();
+        const lastUpdate = new Date(dateString);
+        const diffInSeconds = Math.floor((now.getTime() - lastUpdate.getTime()) / 1000);
+        
+        if (diffInSeconds < 60) {
+            return 'Just now';
+        } else if (diffInSeconds < 3600) {
+            const minutes = Math.floor(diffInSeconds / 60);
+            return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+        } else if (diffInSeconds < 86400) {
+            const hours = Math.floor(diffInSeconds / 3600);
+            return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        } else {
+            const days = Math.floor(diffInSeconds / 86400);
+            return `${days} day${days > 1 ? 's' : ''} ago`;
+        }
+    };
+
+    // Format full time for tooltip
+    const formatFullTime = (dateString: string): string => {
+        return new Date(dateString).toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    };
+
+    const [lastUpdateTime] = useState(new Date().toISOString());
+
+    // Map currency codes to country codes for flags
+    const getCountryCode = (currencyCode: string): string => {
+        const currencyToCountry: Record<string, string> = {
+            'AOA': 'AO', // Angola
+            'USD': 'US', // United States
+            'EUR': 'EU', // European Union (special case)
+            'NAD': 'NA', // Namibia
+            'ZAR': 'ZA', // South Africa
+        };
+        return currencyToCountry[currencyCode] || currencyCode.slice(0, 2);
+    };
 
     const formatRate = (rate: number, maxDecimals = 4): string => {
         // Special case for maxAmount to show full number with 4 decimal places
@@ -344,196 +546,346 @@ export default function Marketplace() {
     return (
         <>
             <Head title="CrossPay - Currency Exchange Rates" />
-            <div className="min-h-screen bg-white dark:bg-slate-950">
+            <style jsx>{`
+                .scrollbar-hide {
+                    -ms-overflow-style: none;
+                    scrollbar-width: none;
+                }
+                .scrollbar-hide::-webkit-scrollbar {
+                    display: none;
+                }
+                body, html {
+                    overflow: hidden;
+                    height: 100vh;
+                    touch-action: pan-y;
+                }
+                .no-scroll {
+                    overflow: hidden;
+                    height: 100vh;
+                }
+            `}</style>
+            <div className="min-h-screen bg-white dark:bg-slate-950 no-scroll">
                 {/* Header */}
-                <header className="border-b border-gray-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+                <header className="fixed top-0 left-0 right-0 z-50 border-b border-gray-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                     <div className="mx-auto max-w-7xl px-6 py-4">
-                        <div className="mb-4 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between gap-4">
+                            {/* Logo */}
+                            <div className="flex items-center gap-2 flex-shrink-0">
                                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500">
                                     <BsCurrencyExchange className="text-white text-xl" />
                                 </div>
                                 <span className="text-lg font-bold text-gray-900 dark:text-white">CrossPay</span>
                             </div>
-                            <div className="flex items-center gap-6">
-                                <div className="flex items-center gap-3">
-                                    {auth.user ? (
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <button className="flex items-center justify-center h-9 w-9 rounded-full bg-gray-200 dark:bg-slate-800 hover:bg-gray-300 dark:hover:bg-slate-700 transition-colors">
-                                                    <UserIcon className="h-4 w-4 text-gray-700 dark:text-gray-300" />
-                                                </button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent className="w-48" align="end">
-                                                <div className="px-3 py-2 text-sm">
-                                                    <div className="font-medium text-gray-900 dark:text-white">{auth.user.name}</div>
-                                                    <div className="text-xs text-gray-500 truncate">{auth.user.email}</div>
-                                                </div>
-                                                <div className="border-t border-gray-200 dark:border-slate-700 my-1"></div>
-                                                <Link href={"/dashboard"}>
-                                                    <DropdownMenuItem className="cursor-pointer">
-                                                        <UserIcon className="mr-2 h-4 w-4" />
-                                                        <span>Profile</span>
-                                                    </DropdownMenuItem>
-                                                </Link>
-                                                <Link href={logout()} method="post" as="button">
-                                                    <DropdownMenuItem className="cursor-pointer text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30">
-                                                        <LogOut className="mr-2 h-4 w-4" />
-                                                        <span>Log out</span>
-                                                    </DropdownMenuItem>
-                                                </Link>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    ) : (
-                                        <div className="flex items-center gap-2">
-                                            <Link
-                                                href={login().url}
-                                                className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+
+                            {/* Search Bar and Filters - Middle */}
+                            <div className="flex items-center gap-4 flex-1 justify-center max-w-2xl">
+                                {/* Search Bar */}
+                                <div className="flex-1 max-w-xs">
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            placeholder="Search currencies..."
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 pr-10 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
+                                        />
+                                        <button className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                            <Search className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Currency Filters */}
+                                <div className="flex items-center gap-2">
+                                    <Filter className="h-4 w-4 text-gray-600 dark:text-gray-400 flex-shrink-0" />
+                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">Filter:</span>
+                                    <div className={`flex gap-1 ${uniqueCurrencyPairs.length > 3 ? 'overflow-x-auto scrollbar-hide' : ''} max-w-xs`}>
+                                        {uniqueCurrencyPairs.map((pair) => (
+                                            <button
+                                                key={pair}
+                                                onClick={() => {
+                                                    setSelectedFilters(prev => {
+                                                        if (prev.includes(pair)) {
+                                                            return prev.filter(f => f !== pair);
+                                                        } else {
+                                                            return [...prev, pair];
+                                                        }
+                                                    });
+                                                }}
+                                                className={`px-2 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap flex-shrink-0 ${
+                                                    selectedFilters.includes(pair)
+                                                        ? 'bg-blue-500 text-white'
+                                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-700 dark:text-gray-300 dark:hover:bg-slate-600'
+                                                }`}
                                             >
-                                                Log in
-                                            </Link>
-                                            <Link
-                                                href={register().url}
-                                                className="px-3 py-1.5 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-                                            >
-                                                Register
-                                            </Link>
-                                        </div>
+                                                {pair}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {selectedFilters.length > 0 && (
+                                        <button
+                                            onClick={() => setSelectedFilters([])}
+                                            className="px-2 py-1 text-xs font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 whitespace-nowrap flex-shrink-0"
+                                        >
+                                            Clear
+                                        </button>
                                     )}
                                 </div>
+
+                                {/* Active Filters Display */}
+                                {selectedFilters.length > 0 && (
+                                    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                                        <span>Active:</span>
+                                        <div className="flex gap-1">
+                                            {selectedFilters.slice(0, 2).map(filter => (
+                                                <span key={filter} className="px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded text-xs">
+                                                    {filter}
+                                                </span>
+                                            ))}
+                                            {selectedFilters.length > 2 && (
+                                                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded text-xs">
+                                                    +{selectedFilters.length - 2}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* User Icon */}
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                                {auth.user ? (
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <button className="flex items-center gap-3 h-10 px-3 rounded-full bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 transition-all duration-200 group">
+                                                {/* User Avatar */}
+                                                <div className="relative">
+                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm shadow-sm">
+                                                        {auth.user.name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-slate-900"></div>
+                                                </div>
+                                                {/* User Name */}
+                                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors hidden sm:block">
+                                                    {auth.user.name.split(' ')[0]}
+                                                </span>
+                                            </button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent className="w-56" align="end">
+                                            <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold shadow-sm">
+                                                        {auth.user.name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-medium text-gray-900 dark:text-white">{auth.user.name}</div>
+                                                        <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{auth.user.email}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="py-2">
+                                                <Link href={"/dashboard"}>
+                                                    <DropdownMenuItem className="cursor-pointer py-2 px-3">
+                                                        <UserIcon className="mr-3 h-4 w-4 text-gray-500" />
+                                                        <div>
+                                                            <div className="font-medium">Profile</div>
+                                                            <div className="text-xs text-gray-500">View your profile</div>
+                                                        </div>
+                                                    </DropdownMenuItem>
+                                                </Link>
+                                                <DropdownMenuItem className="cursor-pointer py-2 px-3">
+                                                    <Settings className="mr-3 h-4 w-4 text-gray-500" />
+                                                    <div>
+                                                        <div className="font-medium">Settings</div>
+                                                        <div className="text-xs text-gray-500">Account preferences</div>
+                                                    </div>
+                                                </DropdownMenuItem>
+                                            </div>
+                                            <div className="border-t border-gray-200 dark:border-slate-700 my-1"></div>
+                                            <Link href={logout()} method="post" as="button">
+                                                <DropdownMenuItem className="cursor-pointer text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 py-2 px-3">
+                                                    <LogOut className="mr-3 h-4 w-4" />
+                                                    <div>
+                                                        <div className="font-medium">Log out</div>
+                                                        <div className="text-xs text-red-500">Sign out of your account</div>
+                                                    </div>
+                                                </DropdownMenuItem>
+                                            </Link>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <Link
+                                            href={login().url}
+                                            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                                        >
+                                            Log in
+                                        </Link>
+                                        <Link
+                                            href={register().url}
+                                            className="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors shadow-sm"
+                                        >
+                                            Register
+                                        </Link>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
                 </header>
 
                 {/* Main Content */}
-                <main className="mx-auto max-w-7xl px-6 py-8">
-                    {/* Search Bar */}
-                    <div className="mb-8">
-                        <div className="flex gap-3">
-                            <div className="flex-1 relative">
-                                <input
-                                    type="text"
-                                    placeholder="Search currencies..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
-                                />
-                            </div>
-                            <button className="rounded-lg bg-blue-500 px-6 py-3 text-white hover:bg-blue-600">
-                                <Search className="h-5 w-5" />
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Last Updated */}
-                    <div className="mb-6 flex items-center justify-end">
-                        <div className="flex items-center gap-4 text-sm">
+                <main className="mx-auto max-w-7xl px-6 py-8 pt-24 relative">
+                    {/* Fixed Last Updated */}
+                    <div className="fixed top-20 right-6 z-40 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-full shadow-lg px-4 py-2" style={{ top: 'calc(5rem + 2rem + 500px)' }}>
+                        <div className="flex items-center gap-2 text-sm">
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                             <span className="text-gray-600 dark:text-gray-400">
-                                Last Updated: {new Date().toLocaleString()}
+                                Updated {formatRelativeTime(lastUpdateTime)}
                             </span>
+                            <div 
+                                className="text-gray-500 dark:text-gray-500 cursor-help"
+                                title={formatFullTime(lastUpdateTime)}
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Table */}
-                    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-slate-800">
-                        <table className="w-full">
-                            <thead>
-                                <tr className="border-b border-gray-200 bg-gray-50 dark:border-slate-800 dark:bg-slate-900/50">
-                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        #
-                                    </th>
-                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        Currency
-                                    </th>
-                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        Amount available for exchange
-                                    </th>
-                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        Rate (1 {userBaseCurrency} = )
-                                    </th>
-                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        24h Change
-                                    </th>
-                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        24h High
-                                    </th>
-                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        24h Low
-                                    </th>
-                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        Click to Exchange
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                    {/* Currency Cards Grid */}
+                    <div className="relative mt-4 mb-2">
+                        {/* Scroll Container with Fixed Height */}
+                        <div 
+                            ref={setScrollContainer}
+                            className={`h-[600px] overflow-y-auto transition-all duration-300 scroll-smooth scrollbar-hide ${
+                                isScrolling ? '' : ''
+                            }`}
+                        >
+                            {/* Top Fade */}
+                            {showTopFade && (
+                                <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-white to-transparent dark:from-slate-950 z-10 pointer-events-none"></div>
+                            )}
+                            
+                            {/* Bottom Fade */}
+                            {showBottomFade && (
+                                <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent dark:from-slate-950 z-10 pointer-events-none"></div>
+                            )}
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
                                 {filteredCurrencies.map((currency, idx) => (
-                                    <tr
+                                    <div
                                         key={currency.id}
-                                        className={`border-b border-gray-200 dark:border-slate-800 ${idx % 2 === 0
-                                            ? 'bg-white dark:bg-slate-950'
-                                            : 'bg-gray-50 dark:bg-slate-900/50'
-                                            } hover:bg-gray-100 dark:hover:bg-slate-800`}
+                                        ref={idx === filteredCurrencies.length - 1 ? lastListingRef : null}
+                                        className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-6 hover:shadow-xl transition-all duration-500 ease-out hover:scale-[1.03] hover:border-blue-300 dark:hover:border-blue-600 transform-gpu"
                                     >
-                                        <td className="px-6 py-4">
-                                            <span className="text-sm font-medium text-gray-900 dark:text-white">
-                                                {currency.id}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
+                                        {/* Header */}
+                                        <div className="flex items-center justify-between mb-4">
                                             <div className="flex items-center gap-3">
-                                                <span className="text-2xl">{currency.flag}</span>
-                                                <span className="font-medium text-gray-900 dark:text-white">
-                                                    {currency.name}
+                                                <div className="w-12 h-8 rounded overflow-hidden shadow-sm">
+                                                    <ReactCountryFlag
+                                                        countryCode={getCountryCode(currency.code)}
+                                                        svg
+                                                        style={{
+                                                            width: '100%',
+                                                            height: '100%',
+                                                            objectFit: 'cover'
+                                                        }}
+                                                        title={currency.name}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                                                        {currency.name}
+                                                    </h3>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                                                        {currency.code}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                                                    {formatRate(1 / currency.rate)}
+                                                </div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                    per {userBaseCurrency}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Stats Grid */}
+                                        <div className="grid grid-cols-2 gap-4 mb-4">
+                                            <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">24h Change</div>
+                                                <div className={`text-sm font-semibold ${
+                                                    currency.change24h >= 0
+                                                        ? 'text-green-600 dark:text-green-400'
+                                                        : 'text-red-600 dark:text-red-400'
+                                                }`}>
+                                                    {currency.change24h >= 0 ? '+' : ''}
+                                                    {formatChange(currency.change24h)}%
+                                                </div>
+                                            </div>
+                                            <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Available</div>
+                                                <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                                                    {formatRate(currency.amount, 4)} {currency.to_currency}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Price Range */}
+                                        <div className="flex items-center justify-between mb-4 text-xs">
+                                            <div>
+                                                <span className="text-gray-500 dark:text-gray-400">Low: </span>
+                                                <span className="text-gray-900 dark:text-white font-medium">
+                                                    {formatRate(1 / currency.high24h)}
                                                 </span>
                                             </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
-                                            {formatRate(currency.amount, 4)} {selectedCurrency?.code || ''}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-sm font-medium text-gray-900 dark:text-white">
-                                                1 {currency.code} = {formatRate(1 / currency.rate)} {userBaseCurrency}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span
-                                                className={`text-sm font-medium ${currency.change24h >= 0
-                                                    ? 'text-green-600 dark:text-green-400'
-                                                    : 'text-red-600 dark:text-red-400'
-                                                    }`}
-                                            >
-                                                {currency.change24h >= 0 ? '+' : ''}
-                                                {formatChange(currency.change24h)}%
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-sm text-gray-900 dark:text-white">
-                                                {formatRate(1 / currency.high24h)}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-sm text-gray-900 dark:text-white">
-                                                {formatRate(1 / currency.low24h)}
-                                            </span>
-                                        </td>
+                                            <div>
+                                                <span className="text-gray-500 dark:text-gray-400">High: </span>
+                                                <span className="text-gray-900 dark:text-white font-medium">
+                                                    {formatRate(1 / currency.low24h)}
+                                                </span>
+                                            </div>
+                                        </div>
 
-                                        <td className="px-6 py-4">
-                                            <button
-                                                onClick={() => handleBuyClick(currency)}
-                                                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm w-full"
-                                            >
-                                                Exchange {currency.code}
-                                            </button>
-                                        </td>
-                                    </tr>
+                                        {/* Exchange Button */}
+                                        <button
+                                            onClick={() => handleBuyClick(currency)}
+                                            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                            </svg>
+                                            Exchange {currency.code}
+                                        </button>
+                                    </div>
                                 ))}
-                            </tbody>
-                        </table>
+                            </div>
+                        </div>
                     </div>
 
+                    {/* Loading Indicator */}
+                    {isLoading && (
+                        <div className="flex justify-center py-8">
+                            <div className="flex items-center gap-2">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                                <span className="text-sm text-gray-600 dark:text-gray-400">Loading more listings...</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* End of Listings */}
+                    {!hasMore && filteredCurrencies.length > 0 && (
+                        <div className="text-center py-4 text-sm text-gray-500 dark:text-gray-400">
+                            No more listings available
+                        </div>
+                    )}
+
                     {/* Footer */}
-                    <div className="mt-6 text-center text-xs text-gray-600 dark:text-gray-400">
+                    <div className="mt-1 text-center text-xs text-gray-600 dark:text-gray-400">
                         <p>© 2025 Coin Market Cap. All rights reserved.</p>
                     </div>
                 </main>
@@ -542,7 +894,7 @@ export default function Marketplace() {
             {/* Buy Currency Modal */}
             {showBuyModal && selectedCurrency && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md">
+                    <div className="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md transform transition-all duration-300 ease-out">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                                 Exchange {selectedCurrency.name} ({selectedCurrency.code})
