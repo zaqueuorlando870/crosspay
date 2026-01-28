@@ -5,6 +5,8 @@ import { login, register, logout } from '@/routes';
 import { toast } from 'sonner';
 import ReactCountryFlag from 'react-country-flag';
 
+const appName = import.meta.env.VITE_APP_NAME || 'CrossPay';
+
 // Use the route function from ziggy-js if needed
 const route = window.route || ((name: string, params = {}) => {
     // Simple route helper if ziggy is not available
@@ -877,16 +879,9 @@ export default function Marketplace() {
                         </div>
                     )}
 
-                    {/* End of Listings */}
-                    {!hasMore && filteredCurrencies.length > 0 && (
-                        <div className="text-center py-4 text-sm text-gray-500 dark:text-gray-400">
-                            No more listings available
-                        </div>
-                    )}
-
                     {/* Footer */}
                     <div className="mt-1 text-center text-xs text-gray-600 dark:text-gray-400">
-                        <p>© 2025 Coin Market Cap. All rights reserved.</p>
+                        <p>© {new Date().getFullYear()} {appName}. All rights reserved.</p>
                     </div>
                 </main>
             </div>
