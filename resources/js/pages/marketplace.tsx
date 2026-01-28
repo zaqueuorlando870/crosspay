@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
 import { router } from '@inertiajs/react';
 import { login, register, logout } from '@/routes';
+import { toast } from 'sonner';
 
 // Use the route function from ziggy-js if needed
 const route = window.route || ((name: string, params = {}) => {
@@ -50,6 +51,10 @@ interface PageProps {
     user?: User;
     listings: Listing[];
     route?: string;
+    success?: string | object;
+    flash?: {
+        success?: string | object;
+    };
 };
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -129,13 +134,128 @@ export default function Marketplace() {
             return;
         }
 
-        // Redirect to the order creation page with the necessary parameters
-        router.visit(route('orders.store', {
-            listing: selectedCurrency.id,
+        // Debug information
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        const routeUrl = route('orders.store');
+        console.log('CSRF Token:', csrfToken);
+        console.log('Route URL:', routeUrl);
+        console.log('Request data:', {
+            listing_id: selectedCurrency.id,
             amount: selectedCurrency.total_amount,
             from_currency: selectedCurrency.from_currency,
             to_currency: selectedCurrency.to_currency
-        }));
+        });
+
+        // Test if user is authenticated by checking a simple authenticated route
+        fetch('/dashboard', {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken || ''
+            }
+        })
+        .then(response => {
+            console.log('Auth test response status:', response.status);
+            if (!response.ok) {
+                console.log('User appears to not be authenticated, status:', response.status);
+                return;
+            }
+            console.log('User is authenticated, proceeding with order creation');
+            
+            // Send the order creation request asynchronously and handle the response
+        fetch(route('orders'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+            },
+            body: JSON.stringify({
+                listing_id: selectedCurrency.id,
+                amount: selectedCurrency.total_amount,
+                from_currency: selectedCurrency.from_currency,
+                to_currency: selectedCurrency.to_currency
+            })
+        })
+        .then(response => {
+            console.log('Response status:', response.status);
+            console.log('Response headers:', response.headers);
+            
+            if (!response.ok) {
+                return response.json().then(data => {
+                    console.log('Error response JSON:', data);
+                    // Don't throw here, just return the error data to be handled in the next .then()
+                    return { ...data, isError: true };
+                }).catch(err => {
+                    // If JSON parsing fails, fallback to text
+                    return response.text().then(text => {
+                        console.log('Error response text:', text);
+                        return { error: 'Server returned non-JSON response', details: text, isError: true };
+                    });
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Response data:', data);
+            
+            // Check if this is an error response
+            if (data.isError) {
+                // Handle error response from server
+                const errorMessage = data.error || data.message || 'Order creation failed';
+                toast.error(errorMessage);
+                return;
+            }
+            
+            // Check if the response indicates success
+            if (data.success) {
+                // Show success message from server or default
+                const successMessage = data.message || 'Order created successfully! Your exchange has been completed.';
+                toast.success(successMessage);
+                
+                // Log additional order details if available
+                if (data.order) {
+                    console.log('Order details:', data.order);
+                }
+                if (data.seller_earning) {
+                    console.log('Seller earning:', data.seller_earning);
+                }
+                if (data.buyer_earning) {
+                    console.log('Buyer earning:', data.buyer_earning);
+                }
+            } else {
+                // Handle case where success is false but no HTTP error
+                const errorMessage = data.error || data.message || 'Order creation failed';
+                toast.error(errorMessage);
+            }
+        })
+        .catch(errors => {
+            console.error('Order creation failed:', errors);
+            
+            // Handle different error response formats
+            let errorMessage = 'Failed to create order. Please try again.';
+            
+            if (typeof errors === 'string') {
+                errorMessage = errors;
+            } else if (errors && typeof errors === 'object') {
+                // OrderController returns error in different formats
+                if (errors.error) {
+                    errorMessage = errors.error;
+                } else if (errors.message) {
+                    errorMessage = errors.message;
+                } else if (Object.keys(errors).length > 0) {
+                    // If it's a validation error object
+                    errorMessage = Object.values(errors).join(', ');
+                }
+            }
+            
+            toast.error(errorMessage);
+        });
+        })
+        .catch(error => {
+            console.error('Auth test failed:', error);
+            toast.error('Authentication check failed. Please log in again.');
+        });
 
         // Get the real rate from from_currency to to_currency
         let realRate;

@@ -15,6 +15,7 @@ import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/react';
 import { BookOpen, Folder, LayoutGrid, Wallet, ArrowDownUp, Wallet2, ArrowUpCircle, Globe } from 'lucide-react';
 import AppLogo from './app-logo';
+import { BsCurrencyExchange } from 'react-icons/bs';
 
 const mainNavItems: NavItem[] = [
     {
@@ -55,7 +56,7 @@ export function AppSidebar() {
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
                             <Link href={dashboard()} prefetch>
-                                <AppLogo />
+                                <BsCurrencyExchange className="text-white text-xl" /> CrossPay
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
