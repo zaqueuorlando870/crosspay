@@ -43,6 +43,8 @@ type Listing = {
     minAmount: number;
     maxAmount: number;
     fee: number;
+    fee_amount?: number;
+    exchange_rate?: number;
     originalData: any;
 };
 
@@ -107,6 +109,20 @@ export default function Marketplace() {
     const [showTopFade, setShowTopFade] = useState(false);
     const [showBottomFade, setShowBottomFade] = useState(true);
     const scrollTimeout = useRef<NodeJS.Timeout>();
+
+    // Mobile detection
+    const [isMobile, setIsMobile] = useState(false);
+
+    useEffect(() => {
+        const checkMobile = () => {
+            setIsMobile(window.innerWidth < 640);
+        };
+        
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
 
     // Get user's base currency from auth or default to USD
     const [userBaseCurrency, setUserBaseCurrency] = useState(auth?.user?.currency || 'USD');
@@ -569,40 +585,38 @@ export default function Marketplace() {
             <div className="min-h-screen bg-white dark:bg-slate-950 no-scroll">
                 {/* Header */}
                 <header className="fixed top-0 left-0 right-0 z-50 border-b border-gray-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-                    <div className="mx-auto max-w-7xl px-6 py-4">
-                        <div className="flex items-center justify-between gap-4">
+                    <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 sm:py-4">
+                        <div className="flex items-center justify-between gap-2 sm:gap-4">
                             {/* Logo */}
                             <div className="flex items-center gap-2 flex-shrink-0">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500">
-                                    <BsCurrencyExchange className="text-white text-xl" />
+                                <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-blue-500">
+                                    <BsCurrencyExchange className="text-white text-sm sm:text-xl" />
                                 </div>
-                                <span className="text-lg font-bold text-gray-900 dark:text-white">CrossPay</span>
+                                <span className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white hidden xs:block sm:block">CrossPay</span>
                             </div>
 
-                            {/* Search Bar and Filters - Middle */}
-                            <div className="flex items-center gap-4 flex-1 justify-center max-w-2xl">
+                            {/* Search and Filters - Center */}
+                            <div className="flex-1 flex items-center justify-center gap-2 sm:gap-3 min-w-0">
                                 {/* Search Bar */}
-                                <div className="flex-1 max-w-xs">
-                                    <div className="relative">
-                                        <input
-                                            type="text"
-                                            placeholder="Search currencies..."
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 pr-10 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
-                                        />
-                                        <button className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                                            <Search className="h-4 w-4" />
-                                        </button>
-                                    </div>
+                                <div className="relative w-full max-w-[120px] sm:max-w-xs">
+                                    <input
+                                        type="text"
+                                        placeholder="Search..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full h-8 sm:h-10 pl-8 sm:pl-10 pr-8 sm:pr-10 text-xs sm:text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                    <button className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                        <Search className="h-3 w-3 sm:h-4 sm:w-4" />
+                                    </button>
                                 </div>
 
                                 {/* Currency Filters */}
-                                <div className="flex items-center gap-2">
-                                    <Filter className="h-4 w-4 text-gray-600 dark:text-gray-400 flex-shrink-0" />
-                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">Filter:</span>
-                                    <div className={`flex gap-1 ${uniqueCurrencyPairs.length > 3 ? 'overflow-x-auto scrollbar-hide' : ''} max-w-xs`}>
-                                        {uniqueCurrencyPairs.map((pair) => (
+                                <div className="flex items-center gap-1 sm:gap-2">
+                                    <Filter className="h-3 w-3 sm:h-4 sm:w-4 text-gray-600 dark:text-gray-400 flex-shrink-0" />
+                                    <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap hidden sm:block">Filter:</span>
+                                    <div className={`flex gap-1 ${uniqueCurrencyPairs.length > 3 ? 'overflow-x-auto scrollbar-hide' : ''} max-w-[100px] sm:max-w-xs`}>
+                                        {uniqueCurrencyPairs.slice(0, isMobile ? 2 : 4).map((pair) => (
                                             <button
                                                 key={pair}
                                                 onClick={() => {
@@ -614,7 +628,7 @@ export default function Marketplace() {
                                                         }
                                                     });
                                                 }}
-                                                className={`px-2 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap flex-shrink-0 ${
+                                                className={`px-1.5 sm:px-2 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap flex-shrink-0 ${
                                                     selectedFilters.includes(pair)
                                                         ? 'bg-blue-500 text-white'
                                                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-700 dark:text-gray-300 dark:hover:bg-slate-600'
@@ -623,52 +637,38 @@ export default function Marketplace() {
                                                 {pair}
                                             </button>
                                         ))}
+                                        {uniqueCurrencyPairs.length > (isMobile ? 2 : 4) && (
+                                            <span className="text-xs text-gray-500 dark:text-gray-400 px-1.5 sm:px-2 py-1">
+                                                +{uniqueCurrencyPairs.length - (isMobile ? 2 : 4)}
+                                            </span>
+                                        )}
                                     </div>
                                     {selectedFilters.length > 0 && (
                                         <button
                                             onClick={() => setSelectedFilters([])}
-                                            className="px-2 py-1 text-xs font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 whitespace-nowrap flex-shrink-0"
+                                            className="px-1.5 sm:px-2 py-1 text-xs font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 whitespace-nowrap flex-shrink-0"
                                         >
                                             Clear
                                         </button>
                                     )}
                                 </div>
-
-                                {/* Active Filters Display */}
-                                {selectedFilters.length > 0 && (
-                                    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                                        <span>Active:</span>
-                                        <div className="flex gap-1">
-                                            {selectedFilters.slice(0, 2).map(filter => (
-                                                <span key={filter} className="px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded text-xs">
-                                                    {filter}
-                                                </span>
-                                            ))}
-                                            {selectedFilters.length > 2 && (
-                                                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded text-xs">
-                                                    +{selectedFilters.length - 2}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
                             </div>
 
                             {/* User Icon */}
-                            <div className="flex items-center gap-3 flex-shrink-0">
+                            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
                                 {auth.user ? (
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                            <button className="flex items-center gap-3 h-10 px-3 rounded-full bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 transition-all duration-200 group">
+                                            <button className="flex items-center gap-2 sm:gap-3 h-8 sm:h-10 px-2 sm:px-3 rounded-full bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 transition-all duration-200 group">
                                                 {/* User Avatar */}
                                                 <div className="relative">
-                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm shadow-sm">
+                                                    <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-xs sm:text-sm shadow-sm">
                                                         {auth.user.name.charAt(0).toUpperCase()}
                                                     </div>
-                                                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-slate-900"></div>
+                                                    <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1 w-2 h-2 sm:w-3 sm:h-3 bg-green-500 rounded-full border border-white dark:border-slate-900"></div>
                                                 </div>
                                                 {/* User Name */}
-                                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors hidden sm:block">
+                                                <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors hidden sm:block">
                                                     {auth.user.name.split(' ')[0]}
                                                 </span>
                                             </button>
@@ -716,16 +716,16 @@ export default function Marketplace() {
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 ) : (
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1 sm:gap-2">
                                         <Link
                                             href={login().url}
-                                            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                                            className="px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
                                         >
                                             Log in
                                         </Link>
                                         <Link
                                             href={register().url}
-                                            className="px-4 py-2 text-sm font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors shadow-sm"
+                                            className="px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors shadow-sm"
                                         >
                                             Register
                                         </Link>
@@ -737,9 +737,29 @@ export default function Marketplace() {
                 </header>
 
                 {/* Main Content */}
-                <main className="mx-auto max-w-7xl px-6 py-8 pt-24 relative">
-                    {/* Fixed Last Updated */}
-                    <div className="fixed top-20 right-6 z-40 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-full shadow-lg px-4 py-2" style={{ top: 'calc(5rem + 2rem + 500px)' }}>
+                <main className="mx-auto max-w-7xl px-4 sm:px-6 py-4 sm:py-8 pt-20 sm:pt-24 relative">
+                    {/* Mobile Last Updated - Above Content */}
+                    <div className="sm:hidden flex justify-center mb-4">
+                        <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-full shadow-lg px-4 py-2">
+                            <div className="flex items-center gap-2 text-sm">
+                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                <span className="text-gray-600 dark:text-gray-400">
+                                    Updated {formatRelativeTime(lastUpdateTime)}
+                                </span>
+                                <div 
+                                    className="text-gray-500 dark:text-gray-500 cursor-help"
+                                    title={formatFullTime(lastUpdateTime)}
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Desktop Fixed Last Updated */}
+                    <div className="hidden sm:flex fixed top-20 right-6 z-40 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-full shadow-lg px-4 py-2" style={{ top: 'calc(5rem + 2rem + 600px)' }}>
                         <div className="flex items-center gap-2 text-sm">
                             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                             <span className="text-gray-600 dark:text-gray-400">
@@ -757,11 +777,11 @@ export default function Marketplace() {
                     </div>
 
                     {/* Currency Cards Grid */}
-                    <div className="relative mt-4 mb-2">
+                    <div className="relative mt-4 sm:mt-8 mb-2 sm:mb-16">
                         {/* Scroll Container with Fixed Height */}
                         <div 
                             ref={setScrollContainer}
-                            className={`h-[600px] overflow-y-auto transition-all duration-300 scroll-smooth scrollbar-hide ${
+                            className={`h-[80vh] sm:h-[600px] overflow-y-auto transition-all duration-300 scroll-smooth scrollbar-hide ${
                                 isScrolling ? '' : ''
                             }`}
                         >
@@ -775,17 +795,17 @@ export default function Marketplace() {
                                 <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent dark:from-slate-950 z-10 pointer-events-none"></div>
                             )}
                             
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 p-3 sm:p-4">
                                 {filteredCurrencies.map((currency, idx) => (
                                     <div
                                         key={currency.id}
                                         ref={idx === filteredCurrencies.length - 1 ? lastListingRef : null}
-                                        className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-6 hover:shadow-xl transition-all duration-500 ease-out hover:scale-[1.03] hover:border-blue-300 dark:hover:border-blue-600 transform-gpu"
+                                        className="bg-white dark:bg-slate-800 rounded-lg sm:rounded-xl border border-gray-200 dark:border-slate-700 p-4 sm:p-6 hover:shadow-xl transition-all duration-500 ease-out hover:scale-[1.02] sm:hover:scale-[1.03] hover:border-blue-300 dark:hover:border-blue-600 transform-gpu"
                                     >
                                         {/* Header */}
-                                        <div className="flex items-center justify-between mb-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-12 h-8 rounded overflow-hidden shadow-sm">
+                                        <div className="flex items-center justify-between mb-3 sm:mb-4">
+                                            <div className="flex items-center gap-2 sm:gap-3">
+                                                <div className="w-10 h-6 sm:w-12 sm:h-8 rounded overflow-hidden shadow-sm">
                                                     <ReactCountryFlag
                                                         countryCode={getCountryCode(currency.code)}
                                                         svg
@@ -798,29 +818,29 @@ export default function Marketplace() {
                                                     />
                                                 </div>
                                                 <div>
-                                                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                                                    <h3 className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white">
                                                         {currency.name}
                                                     </h3>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                                                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
                                                         {currency.code}
                                                     </p>
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                                                    {formatRate(1 / currency.rate)}
-                                                </div>
                                                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                    per {userBaseCurrency}
+                                                    1 {currency.to_currency}
+                                                </div>
+                                                <div className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">
+                                                    {formatRate(1 / currency.rate)}
                                                 </div>
                                             </div>
                                         </div>
 
                                         {/* Stats Grid */}
-                                        <div className="grid grid-cols-2 gap-4 mb-4">
-                                            <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
+                                        <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-3 sm:mb-4">
+                                            <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-2 sm:p-3">
                                                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">24h Change</div>
-                                                <div className={`text-sm font-semibold ${
+                                                <div className={`text-xs sm:text-sm font-semibold ${
                                                     currency.change24h >= 0
                                                         ? 'text-green-600 dark:text-green-400'
                                                         : 'text-red-600 dark:text-red-400'
@@ -829,16 +849,16 @@ export default function Marketplace() {
                                                     {formatChange(currency.change24h)}%
                                                 </div>
                                             </div>
-                                            <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3">
+                                            <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-2 sm:p-3">
                                                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Available</div>
-                                                <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                                                    {formatRate(currency.amount, 4)} {currency.to_currency}
+                                                <div className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white">
+                                                    {formatRate(currency.amount, 4)} {currency.from_currency}
                                                 </div>
                                             </div>
                                         </div>
 
                                         {/* Price Range */}
-                                        <div className="flex items-center justify-between mb-4 text-xs">
+                                        <div className="flex items-center justify-between mb-3 sm:mb-4 text-xs">
                                             <div>
                                                 <span className="text-gray-500 dark:text-gray-400">Low: </span>
                                                 <span className="text-gray-900 dark:text-white font-medium">
@@ -856,9 +876,9 @@ export default function Marketplace() {
                                         {/* Exchange Button */}
                                         <button
                                             onClick={() => handleBuyClick(currency)}
-                                            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+                                            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 sm:py-3 px-3 sm:px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 text-xs sm:text-sm"
                                         >
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                                             </svg>
                                             Exchange {currency.code}
@@ -888,30 +908,30 @@ export default function Marketplace() {
 
             {/* Buy Currency Modal */}
             {showBuyModal && selectedCurrency && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md transform transition-all duration-300 ease-out">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-lg p-4 sm:p-6 w-full max-w-md transform transition-all duration-300 ease-out max-h-[90vh] overflow-y-auto relative mx-auto">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
                                 Exchange {selectedCurrency.name} ({selectedCurrency.code})
                             </h3>
                             <button
                                 onClick={() => setShowBuyModal(false)}
-                                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-xl sm:text-base flex-shrink-0"
                             >
                                 ✕
                             </button>
                         </div>
 
                         <form onSubmit={handleBuySubmit}>
-                            <div className="mb-6">
+                            <div className="mb-4 sm:mb-6">
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                     Amount to Pay
                                 </label>
                                 <div className="relative rounded-lg border-0 bg-white dark:bg-slate-800 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
                                     <div className="flex items-center justify-between">
-                                        <div className="flex-1 min-w-0">
-                                            <div className="py-4 px-4">
-                                                <span className="block text-2xl font-semibold text-gray-900 dark:text-white">
+                                        <div className="flex-1 min-w-0 bg-red-500 rounded-l-2xl">
+                                            <div className="py-3 sm:py-4 px-3 sm:px-4">
+                                                <span className="block text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white">
                                                     {Number(selectedCurrency?.total_amount)?.toLocaleString('en-US', {
                                                         minimumFractionDigits: 2,
                                                         maximumFractionDigits: 2
@@ -919,62 +939,65 @@ export default function Marketplace() {
                                                 </span>
                                             </div>
                                         </div>
-                                        <div className="flex-shrink-0 bg-gray-50 dark:bg-slate-700 px-4 py-4 border-l border-gray-200 rounded dark:border-gray-600">
-                                            <span className="inline-flex items-center px-2.5 py-0.5 text-1xl font-bold text-white-400 dark:text-white-200">
+                                        <div className="flex-shrink-0 bg-gray-50 rounded-r-2xl dark:bg-slate-700 px-3 sm:px-4 py-3 sm:py-4 border-l border-gray-200 rounded dark:border-gray-600">
+                                            <span className="inline-flex items-center px-2.5 py-0.5 text-lg sm:text-1xl font-bold text-white-400 dark:text-white-200">
                                                 {selectedCurrency?.to_currency}
                                             </span>
                                         </div>
                                     </div>
                                 </div>
-
-                                {/* Hidden input for form submission */}
-                                <input
-                                    type="hidden"
-                                    name="amount"
-                                    value={selectedCurrency?.total_amount || '0'}
-                                />
-
                             </div>
 
-                            <div className="mb-4 p-4 bg-gray-50 dark:bg-slate-700 rounded-md">
-                                <div className="flex justify-between mb-2">
-                                    <span className="text-sm text-gray-600 dark:text-gray-300">Exchange Rate (with {selectedCurrency.fee}% fee):</span>
-                                    <span className="text-sm font-medium">1 {selectedCurrency.from_currency} = {
-                                        (() => {
-                                            if (selectedCurrency.from_currency === selectedCurrency.to_currency) return '1.0000';
-                                            const fromRate = listings.find(c => c.code === selectedCurrency.from_currency)?.baseRate || 1;
-                                            const toRate = listings.find(c => c.code === selectedCurrency.to_currency)?.baseRate || 1;
-                                            const directRate = toRate / fromRate;
-                                            // Apply fee to the rate
-                                            return (directRate * (1 - selectedCurrency.fee / 100)).toFixed(4);
-                                        })()
-                                    } {selectedCurrency.to_currency}</span>
-                                </div>
-                                <div className="flex justify-between mb-2 text-xs text-gray-500">
-                                    <span>Fee:</span>
-                                    <span>{selectedCurrency.fee}%</span>
-                                </div>
-                                <div className="flex justify-between font-semibold pt-2 border-t border-gray-200 dark:border-gray-600">
-                                    <span className="text-gray-900 dark:text-white">You'll receive:</span>
-                                    <div className="text-right">
-                                        <div className="text-blue-600 dark:text-blue-400 font-semibold">
-                                            {selectedCurrency?.amount || '0'} {selectedCurrency?.from_currency}
+                            <div className="mb-4 sm:mb-6">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    You will receive
+                                </label>
+                                <div className="relative rounded-lg border-0 bg-white dark:bg-slate-800 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex-1 min-w-0 bg-green-500 rounded-l-2xl">
+                                            <div className="py-3 sm:py-4 px-3 sm:px-4">
+                                                <span className="block text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white">
+                                                     {Number(selectedCurrency?.amount)?.toLocaleString('en-US', {
+                                                        minimumFractionDigits: 2,
+                                                        maximumFractionDigits: 2
+                                                    })}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex-shrink-0 rounded-r-2xl bg-gray-50 dark:bg-slate-700 px-3 sm:px-4 py-3 sm:py-4 border-l border-gray-200 rounded dark:border-gray-600">
+                                            <span className="inline-flex items-center px-2.5 py-0.5 text-lg sm:text-1xl font-bold text-white-400 dark:text-white-200">
+                                                {selectedCurrency?.from_currency}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="flex justify-end gap-3">
+                            <div className="mb-4 sm:mb-6">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    Exchange Rate
+                                </label>
+                                <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-3 sm:p-4">
+                                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                                        1 {selectedCurrency?.to_currency} = { formatRate(1 / selectedCurrency?.rate) || 0} {selectedCurrency?.from_currency}
+                                    </div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                                        Fee: {selectedCurrency?.fee}% ({formatRate(selectedCurrency?.fee_amount || 0)} {selectedCurrency?.to_currency})
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3">
                                 <button
                                     type="button"
                                     onClick={() => setShowBuyModal(false)}
-                                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700"
+                                    className="flex-1 px-3 sm:px-4 py-2 sm:py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-slate-700 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                                    className="flex-1 px-3 sm:px-4 py-2 sm:py-3 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 transition-colors"
                                 >
                                     Confirm Exchange
                                 </button>
